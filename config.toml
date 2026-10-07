@@ -4,8 +4,9 @@
 #
 # (A legacy config with a bare [keys] table still works as a single M1 profile.)
 profiles_dir = "profiles"
-m1 = "basic.toml"
-m2 = "media.toml"
+m1 = "v1-build.toml"
+m2 = "workflow-2.toml"
+m3 = "workflow-3.toml"
 
 # Auto-repeat timing (global). Uncomment to override the defaults below.
 # Per-binding on/off lives in each profile's [repeat] table (Bindings tab checkbox).

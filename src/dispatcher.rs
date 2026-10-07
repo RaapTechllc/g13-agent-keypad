@@ -58,13 +58,27 @@ impl Dispatcher {
     }
 
     fn handle_key_down(&mut self, key: G13Key) {
-        let (binding, repeat, ar) = {
+        let (action, binding, repeat, ar, dir, profile_name) = {
             let set = self.profiles.read().unwrap();
+            let dir = set.config_dir().to_path_buf();
+            let profile_name = set.active_name().unwrap_or("profile").to_string();
             match set.active_profile() {
-                Some(p) => (p.get_binding(key).map(str::to_owned), p.repeats(key), set.autorepeat()),
-                None => (None, false, set.autorepeat()),
+                Some(p) => (
+                    p.action(key).cloned(),
+                    p.get_binding(key).map(str::to_owned),
+                    p.repeats(key),
+                    set.autorepeat(),
+                    dir,
+                    profile_name,
+                ),
+                None => (None, None, false, set.autorepeat(), dir, profile_name),
             }
         };
+        if let Some(action) = action {
+            // Actions fire once on KeyDown. Repeat and KeyUp do not apply.
+            self.fire_action(key, &action, &dir, &profile_name);
+            return;
+        }
         let Some(binding) = binding else {
             log::debug!("{key:?} -> (unmapped)");
             return;
@@ -92,6 +106,41 @@ impl Dispatcher {
                     });
                 }
                 Err(e) => log::warn!("injection failed: {e:#}"),
+            }
+        }
+    }
+
+    fn fire_action(
+        &self,
+        key: G13Key,
+        action: &crate::actions::Action,
+        dir: &std::path::Path,
+        profile_name: &str,
+    ) {
+        let label = crate::actions::key_label(key);
+        match action {
+            crate::actions::Action::PasteText(paste) => {
+                match crate::actions::read_prompt(dir, &paste.file, &label, profile_name) {
+                    Ok(text) => {
+                        let req = crate::actions::PasteRequest {
+                            key_name: label,
+                            file_label: paste.file.clone(),
+                            method: paste.method,
+                            restore_clipboard: paste.restore_clipboard,
+                            text,
+                        };
+                        if let Err(e) = self.injector.paste_text(&req) {
+                            log::warn!("paste failed: {e:#}");
+                        }
+                    }
+                    Err(e) => log::warn!("{e:#}"),
+                }
+            }
+            crate::actions::Action::LaunchOrFocus(launch) => {
+                let target = crate::actions::LaunchTarget::from_action(label, launch);
+                if let Err(e) = self.injector.launch_or_focus(&target) {
+                    log::warn!("launch failed: {e:#}");
+                }
             }
         }
     }

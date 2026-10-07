@@ -1,0 +1,41 @@
+# Public repository: keep real prompts in your installed copy, not in git.
+# Grill-me skill (link only; do not copy its text into this repo):
+# https://github.com/mattpocock/skills/blob/main/skills/productivity/grill-me/SKILL.md
+
+[meta]
+name = "V1 build"
+
+[keys.G1]
+type = "paste_text"
+file = "prompts/v1-build/01-spec-pr.md"
+
+[keys.G2]
+type = "paste_text"
+file = "prompts/v1-build/02-grill-me.md"
+
+[keys.G3]
+type = "paste_text"
+file = "prompts/v1-build/03-verify.md"
+
+[keys.G4]
+type = "paste_text"
+file = "prompts/v1-build/04-ship.md"
+
+# BTN1 path is unverified. For a browser app, set exe to the browser and put the URL in args.
+[keys.BTN1]
+type = "launch_or_focus"
+exe = '%LOCALAPPDATA%\Programs\REPLACE_ME\REPLACE_ME.exe'
+
+# Per-user install. A system install uses %ProgramFiles%\cursor\Cursor.exe
+# (https://cursor.com/docs/enterprise/endpoint-security).
+[keys.BTN2]
+type = "launch_or_focus"
+exe = '%LOCALAPPDATA%\Programs\cursor\Cursor.exe'
+
+[labels]
+G1 = "Spec"
+G2 = "Grill"
+G3 = "Verify"
+G4 = "Ship"
+BTN1 = "Grok Bot"
+BTN2 = "Cursor"

@@ -125,4 +125,13 @@ impl KeyInjector for WindowsInjector {
         Self::send_batch(&inputs, "combo_up");
         Ok(())
     }
+
+    fn paste_text(&self, req: &crate::actions::PasteRequest) -> Result<()> {
+        super::windows_actions::spawn_paste(req.clone());
+        Ok(())
+    }
+
+    fn launch_or_focus(&self, target: &crate::actions::LaunchTarget) -> Result<()> {
+        super::windows_actions::launch_or_focus(target)
+    }
 }

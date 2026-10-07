@@ -1,6 +1,9 @@
+pub mod dry_run;
 pub mod key_map;
 #[cfg(windows)]
 pub mod windows;
+#[cfg(windows)]
+pub mod windows_actions;
 
 use anyhow::{bail, Result};
 
@@ -28,6 +31,14 @@ pub trait KeyInjector: Send + Sync {
     fn combo_down(&self, combo: &KeyCombo) -> Result<()>;
     /// Release a combo previously held with `combo_down`.
     fn combo_up(&self, combo: &KeyCombo) -> Result<()>;
+    /// Paste prompt text into the focused window. Default: unsupported.
+    fn paste_text(&self, _req: &crate::actions::PasteRequest) -> Result<()> {
+        bail!("paste_text is not supported by this injector");
+    }
+    /// Focus a running process or start its exe. Default: unsupported.
+    fn launch_or_focus(&self, _target: &crate::actions::LaunchTarget) -> Result<()> {
+        bail!("launch_or_focus is not supported by this injector");
+    }
 }
 
 impl KeyCombo {

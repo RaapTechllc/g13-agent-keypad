@@ -3,6 +3,7 @@
 #[cfg(not(windows))]
 compile_error!("g13-driver v0.1 targets Windows only; Linux support is planned for v1.0");
 
+mod actions;
 mod autostart;
 mod catalog;
 mod config;
@@ -18,6 +19,7 @@ mod monitor;
 mod profiles;
 mod protocol;
 mod runtime;
+mod simulate;
 mod single_instance;
 mod tray;
 mod update;
@@ -40,27 +42,58 @@ fn resolve_config_path() -> std::path::PathBuf {
     std::path::PathBuf::from("config.toml")
 }
 
+#[cfg(windows)]
+fn attach_parent_console() {
+    // Reattach so a windows-subsystem binary can print to the launching terminal.
+    unsafe { windows_sys::Win32::System::Console::AttachConsole(u32::MAX); } // ATTACH_PARENT_PROCESS
+}
+
 fn main() -> Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    let headless = args.iter().any(|a| a == "--headless");
-    let minimized = args.iter().any(|a| a == "--minimized");
-    let updated = args.iter().any(|a| a == "--updated");
-
-    #[cfg(windows)]
-    if headless {
-        // Reattach to the launching terminal so logs are visible under windows_subsystem=windows.
-        unsafe { windows_sys::Win32::System::Console::AttachConsole(u32::MAX); } // ATTACH_PARENT_PROCESS
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mode = match simulate::parse_cli(&args) {
+        Ok(mode) => mode,
+        Err(msg) => {
+            eprintln!("{msg}");
+            std::process::exit(4);
+        }
+    };
+    match mode {
+        simulate::CliMode::CheckConfig { config } => {
+            #[cfg(windows)]
+            attach_parent_console();
+            let path = config.unwrap_or_else(resolve_config_path);
+            std::process::exit(simulate::run_check(&path));
+        }
+        simulate::CliMode::Simulate { config, spec } => {
+            #[cfg(windows)]
+            attach_parent_console();
+            let path = config.unwrap_or_else(resolve_config_path);
+            std::process::exit(simulate::run_simulate(&path, &spec));
+        }
+        simulate::CliMode::Live { headless, minimized, updated } => {
+            #[cfg(windows)]
+            if headless {
+                attach_parent_console();
+            }
+            env_logger::init();
+            log::info!("g13-driver v{}", env!("G13_VERSION"));
+            // Live mode has no config override. Only the existing lookup is used.
+            let config_path = resolve_config_path();
+            let config = runtime::load_config_and_watch(config_path.clone())?;
+            if headless {
+                return runtime::run_headless(config);
+            }
+            run_gui(config, config_path, minimized, updated)
+        }
     }
+}
 
-    env_logger::init();
-    log::info!("g13-driver v{}", env!("G13_VERSION"));
-
-    let config_path = resolve_config_path();
-    let config = runtime::load_config_and_watch(config_path.clone())?;
-
-    if headless {
-        return runtime::run_headless(config);
-    }
+fn run_gui(
+    config: std::sync::Arc<std::sync::RwLock<config::ProfileSet>>,
+    config_path: std::path::PathBuf,
+    minimized: bool,
+    updated: bool,
+) -> Result<()> {
 
     // GUI: enforce single instance.
     #[cfg(windows)]
@@ -73,17 +106,34 @@ fn main() -> Result<()> {
         match acq {
             single_instance::Acquired::Already => {
                 single_instance::signal_existing();
-                return Ok(());
+                Ok(())
             }
             single_instance::Acquired::First(guard) => {
                 let _guard = guard;
-                return monitor::run(config, config_path, minimized);
+                monitor::run(config, config_path, minimized)
             }
         }
     }
     #[cfg(not(windows))]
     monitor::run(config, config_path, minimized)
 }
+
+#[cfg(test)]
+mod actions_tests;
+#[cfg(test)]
+mod catalog_tests;
+#[cfg(test)]
+mod config_tests;
+#[cfg(test)]
+mod dispatcher_tests;
+#[cfg(test)]
+mod docs_tests;
+#[cfg(test)]
+mod license_tests;
+#[cfg(test)]
+mod simulate_tests;
+#[cfg(test)]
+mod update_tests;
 
 #[cfg(test)]
 mod version_tests {
