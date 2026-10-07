@@ -520,7 +520,7 @@ impl ProfileSet {
             .with_context(|| format!("failed to read config: {}", config_path.display()))?;
         let raw: RawManifest = toml::from_str(&content)
             .with_context(|| format!("failed to parse config: {}", config_path.display()))?;
-        let base = config_path.parent().unwrap_or_else(|| Path::new("."));
+        let base = config_dir_of(config_path);
         let autorepeat = raw.autorepeat.map(AutoRepeat::from_raw).unwrap_or_default();
         let start_active = raw.app.as_ref().map(|a| a.start_active).unwrap_or(false);
         let joystick_deadzone = raw.joystick.map(|j| j.deadzone.min(127) as u8).unwrap_or(50);
@@ -664,7 +664,7 @@ impl ProfileSet {
     }
 
     pub fn config_dir(&self) -> &Path {
-        self.config_path.parent().unwrap_or_else(|| Path::new("."))
+        config_dir_of(&self.config_path)
     }
 
     pub fn active(&self) -> MKey { self.active }
@@ -933,6 +933,14 @@ impl ProfileSet {
         std::fs::write(&path, toml)
             .with_context(|| format!("failed to write {}", path.display()))?;
         Ok(())
+    }
+}
+
+/// Directory that holds `config.toml`. A bare `config.toml` has an empty parent.
+fn config_dir_of(config_path: &Path) -> &Path {
+    match config_path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
     }
 }
 

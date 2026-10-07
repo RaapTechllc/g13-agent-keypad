@@ -1,7 +1,9 @@
 #[test]
 fn license_notice_and_cargo_field() {
     use sha2::Digest;
-    let license = std::fs::read("LICENSE").expect("LICENSE");
+    let mut license = std::fs::read("LICENSE").expect("LICENSE");
+    // A Windows checkout may expand LF to CRLF. The committed file is LF.
+    license.retain(|b| *b != b'\r');
     let mut hasher = sha2::Sha256::new();
     hasher.update(&license);
     let digest = hasher.finalize();
