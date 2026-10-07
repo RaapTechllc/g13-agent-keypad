@@ -16,12 +16,19 @@ pub(crate) struct RawMeta {
     pub origin: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub(crate) enum RawKey {
+    Combo(String),
+    Table(toml::Value),
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub(crate) struct RawConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub meta: Option<RawMeta>,
-    #[serde(default)]
-    pub keys: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub keys: HashMap<String, RawKey>,
     #[serde(default)]
     pub joystick: Option<RawJoystick>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -144,6 +151,7 @@ pub struct Profile {
     source: ProfileSource,
     modified: bool,
     origin: Option<String>,
+    actions: HashMap<G13Key, crate::actions::Action>,
 }
 
 impl Profile {
@@ -157,10 +165,23 @@ impl Profile {
 
     pub(crate) fn from_raw(raw: RawConfig) -> Result<Self> {
         let mut key_bindings = HashMap::new();
+        let mut actions = HashMap::new();
         for (name, binding) in raw.keys {
             let key = parse_g13_key(&name)
                 .with_context(|| format!("unknown G13 key: {}", name))?;
-            key_bindings.insert(key, binding);
+            match binding {
+                RawKey::Combo(binding) => {
+                    key_bindings.insert(key, binding);
+                }
+                RawKey::Table(value) => {
+                    let label = crate::actions::key_label(key);
+                    let action = crate::actions::parse_action(&label, &value)?;
+                    if key_bindings.remove(&key).is_some() {
+                        log::warn!("{label} has both a combo and an action; the action wins");
+                    }
+                    actions.insert(key, action);
+                }
+            }
         }
 
         let mut repeat = HashMap::new();
@@ -214,12 +235,43 @@ impl Profile {
 
         Ok(Self {
             key_bindings, joystick, repeat, labels, joystick_labels, joystick_repeat,
-            meta_name, source, modified, origin,
+            meta_name, source, modified, origin, actions,
         })
     }
 
     pub fn get_binding(&self, key: G13Key) -> Option<&str> {
         self.key_bindings.get(&key).map(|s| s.as_str())
+    }
+
+    pub fn action(&self, key: G13Key) -> Option<&crate::actions::Action> {
+        self.actions.get(&key)
+    }
+
+    pub fn actions(&self) -> &HashMap<G13Key, crate::actions::Action> {
+        &self.actions
+    }
+
+    pub fn has_actions(&self) -> bool {
+        !self.actions.is_empty()
+    }
+
+    pub fn action_rows(&self) -> HashMap<G13Key, String> {
+        self.actions().iter().map(|(k, a)| (*k, a.summary())).collect()
+    }
+
+    /// Existence, UTF-8, size, symlink, and canonical-folder checks for paste files.
+    pub fn check_prompts(&self, config_dir: &Path, profile_name: &str) -> Result<()> {
+        for (key, action) in &self.actions {
+            if let crate::actions::Action::PasteText(paste) = action {
+                crate::actions::read_prompt(
+                    config_dir,
+                    &paste.file,
+                    &crate::actions::key_label(*key),
+                    profile_name,
+                )?;
+            }
+        }
+        Ok(())
     }
 
     pub fn joystick(&self) -> Option<&JoystickConfig> {
@@ -235,6 +287,13 @@ impl Profile {
     }
 
     pub fn set_bindings(&mut self, bindings: HashMap<G13Key, String>) {
+        let mut bindings = bindings;
+        let action_keys: Vec<G13Key> = self.actions.keys().copied().collect();
+        for key in action_keys {
+            if bindings.remove(&key).is_some() {
+                log::warn!("{key:?} has both a combo and an action; the action wins");
+            }
+        }
         self.key_bindings = bindings;
     }
 
@@ -292,8 +351,8 @@ impl Profile {
     /// Serialize this profile back to TOML (keys + joystick + repeat). Comments in the
     /// original file are not preserved (the file becomes GUI-managed).
     pub fn to_toml(&self) -> Result<String> {
-        let keys: HashMap<String, String> = self.key_bindings.iter()
-            .map(|(k, v)| (format!("{k:?}"), v.clone())) // Debug of G13Key is "G1".."G22"
+        let keys: HashMap<String, RawKey> = self.key_bindings.iter()
+            .map(|(k, v)| (format!("{k:?}"), RawKey::Combo(v.clone()))) // Debug of G13Key is "G1".."G22"
             .collect();
         let joystick = self.joystick.as_ref()
             .filter(|j| j.up.is_some() || j.down.is_some() || j.left.is_some() || j.right.is_some())
@@ -339,7 +398,16 @@ impl Profile {
             }
         };
         let raw = RawConfig { meta, keys, joystick, repeat, labels };
-        toml::to_string(&raw).context("failed to serialize profile")
+        let mut text = toml::to_string(&raw).context("failed to serialize profile")?;
+        if !self.actions.is_empty() {
+            if !text.ends_with('\n') { text.push('\n'); }
+            let mut rows: Vec<_> = self.actions.iter().collect();
+            rows.sort_by_key(|(k, _)| crate::actions::key_label(**k));
+            for (key, action) in rows {
+                text.push_str(&action.toml_block(&crate::actions::key_label(*key)));
+            }
+        }
+        Ok(text)
     }
 }
 
@@ -356,6 +424,7 @@ impl Default for Profile {
             source: ProfileSource::User,
             modified: false,
             origin: None,
+            actions: HashMap::new(),
         }
     }
 }
@@ -438,6 +507,7 @@ pub struct ProfileSet {
     start_active: bool,
     backlight: crate::led::BacklightConfig,
     lcd: crate::lcd::LcdConfig,
+    slot_errors: Vec<(MKey, String)>,
 }
 
 impl ProfileSet {
@@ -516,18 +586,35 @@ impl ProfileSet {
             let dir = base.join(raw.profiles_dir.as_deref().unwrap_or("profiles"));
             // Load a slot: None on missing name OR load failure. Keep the name even
             // when the file failed to load, so the UI can show the broken assignment.
-            let load_opt = |name: &Option<String>| -> (Option<Profile>, Option<String>) {
+            let (m1, m1_name, m2, m2_name, m3, m3_name, slot_errors) = {
+            let mut slot_errors = Vec::new();
+            let mut load_opt = |name: &Option<String>, slot: MKey| -> (Option<Profile>, Option<String>) {
                 match name {
                     Some(n) => match Profile::load(&dir.join(n)) {
-                        Ok(p) => (Some(p), Some(n.clone())),
-                        Err(e) => { log::warn!("slot profile {n} not loaded: {e:#}"); (None, Some(n.clone())) }
+                        Ok(p) => match p.check_prompts(base, n) {
+                            Ok(()) => (Some(p), Some(n.clone())),
+                            Err(e) => {
+                                let msg = e.to_string();
+                                log::warn!("slot profile {n} not loaded: {msg}");
+                                slot_errors.push((slot, msg));
+                                (None, Some(n.clone()))
+                            }
+                        },
+                        Err(e) => {
+                            let msg = format!("profile {n}: {e}");
+                            log::warn!("slot profile {n} not loaded: {msg}");
+                            slot_errors.push((slot, msg));
+                            (None, Some(n.clone()))
+                        }
                     },
                     None => (None, None),
                 }
             };
-            let (m1, m1_name) = load_opt(&raw.m1);
-            let (m2, m2_name) = load_opt(&raw.m2);
-            let (m3, m3_name) = load_opt(&raw.m3);
+            let (m1, m1_name) = load_opt(&raw.m1, MKey::M1);
+            let (m2, m2_name) = load_opt(&raw.m2, MKey::M2);
+            let (m3, m3_name) = load_opt(&raw.m3, MKey::M3);
+            (m1, m1_name, m2, m2_name, m3, m3_name, slot_errors)
+            };
             Ok(Self {
                 profiles_dir: dir,
                 m1, m2, m3,
@@ -539,14 +626,26 @@ impl ProfileSet {
                 start_active,
                 backlight,
                 lcd,
+                slot_errors,
             })
         } else {
             // Legacy: the file itself is a single M1 profile.
-            let m1 = Profile::load(&config_path.to_path_buf())?;
+            let loaded = Profile::load(&config_path.to_path_buf())?;
             let name = config_path.file_name().and_then(|s| s.to_str()).map(String::from);
+            let profile_name = name.clone().unwrap_or_else(|| "config.toml".to_string());
+            let mut slot_errors = Vec::new();
+            let m1 = match loaded.check_prompts(base, &profile_name) {
+                Ok(()) => Some(loaded),
+                Err(e) => {
+                    let msg = e.to_string();
+                    log::warn!("slot profile {profile_name} not loaded: {msg}");
+                    slot_errors.push((MKey::M1, msg));
+                    None
+                }
+            };
             Ok(Self {
                 profiles_dir: base.to_path_buf(),
-                m1: Some(m1), m2: None, m3: None,
+                m1, m2: None, m3: None,
                 m1_name: name, m2_name: None, m3_name: None,
                 active: MKey::M1,
                 autorepeat,
@@ -555,8 +654,17 @@ impl ProfileSet {
                 start_active,
                 backlight,
                 lcd,
+                slot_errors,
             })
         }
+    }
+
+    pub fn slot_errors(&self) -> &[(MKey, String)] {
+        &self.slot_errors
+    }
+
+    pub fn config_dir(&self) -> &Path {
+        self.config_path.parent().unwrap_or_else(|| Path::new("."))
     }
 
     pub fn active(&self) -> MKey { self.active }
@@ -828,7 +936,7 @@ impl ProfileSet {
     }
 }
 
-fn parse_g13_key(s: &str) -> Option<G13Key> {
+pub(crate) fn parse_g13_key(s: &str) -> Option<G13Key> {
     match s.to_uppercase().as_str() {
         "G1"  => Some(G13Key::G1),  "G2"  => Some(G13Key::G2),
         "G3"  => Some(G13Key::G3),  "G4"  => Some(G13Key::G4),
@@ -1390,7 +1498,7 @@ mod tests {
     fn raw(pairs: &[(&str, &str)]) -> RawConfig {
         RawConfig {
             meta: None,
-            keys: pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            keys: pairs.iter().map(|(k, v)| (k.to_string(), RawKey::Combo(v.to_string()))).collect(),
             joystick: None,
             repeat: HashMap::new(),
             labels: HashMap::new(),

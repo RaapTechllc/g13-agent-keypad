@@ -1,0 +1,34 @@
+# Public repository: keep real prompts in your installed copy, not in git.
+
+[meta]
+name = "Workflow 2"
+
+[keys.G1]
+type = "paste_text"
+file = "prompts/workflow-2/01-step.md"
+
+[keys.G2]
+type = "paste_text"
+file = "prompts/workflow-2/02-step.md"
+
+[keys.G3]
+type = "paste_text"
+file = "prompts/workflow-2/03-step.md"
+
+# BTN1 path is unverified. For a browser app, set exe to the browser and put the URL in args.
+[keys.BTN1]
+type = "launch_or_focus"
+exe = '%LOCALAPPDATA%\Programs\REPLACE_ME\REPLACE_ME.exe'
+
+# Per-user install. A system install uses %ProgramFiles%\cursor\Cursor.exe
+# (https://cursor.com/docs/enterprise/endpoint-security).
+[keys.BTN2]
+type = "launch_or_focus"
+exe = '%LOCALAPPDATA%\Programs\cursor\Cursor.exe'
+
+[labels]
+G1 = "Step 1"
+G2 = "Step 2"
+G3 = "Step 3"
+BTN1 = "Grok Bot"
+BTN2 = "Cursor"

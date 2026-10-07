@@ -107,6 +107,15 @@ fn render_mapping_row(
     });
 }
 
+fn render_action_row(ui: &mut egui::Ui, name: &str, summary: &str) {
+    ui.horizontal(|ui| {
+        ui.monospace(format!("{name:>5}"));
+        ui.add_space(6.0);
+        ui.label(summary);
+        ui.weak("read-only");
+    });
+}
+
 fn render_binding_row(
     ui: &mut egui::Ui,
     key: G13Key,
@@ -480,21 +489,19 @@ fn spawn_update_check(
     ctx: egui::Context,
     manual: bool,
 ) {
+    if !crate::update::UPDATE_CHECK_ENABLED {
+        return;
+    }
     std::thread::spawn(move || {
         *status.lock().unwrap() = crate::update::UpdateStatus::Checking;
         ctx.request_repaint();
-        let next = match crate::update::check() {
-            Ok(Some(u)) => crate::update::UpdateStatus::Available(u),
-            Ok(None) => crate::update::UpdateStatus::UpToDate,
-            Err(e) => {
-                log::warn!("update check failed: {e:#}");
-                if manual {
-                    crate::update::UpdateStatus::Failed("couldn't check for updates".into())
-                } else {
-                    crate::update::UpdateStatus::Idle
-                }
-            }
-        };
+        let mut fetch = crate::update::fetch_latest_json;
+        let next = crate::update::next_status(
+            crate::update::UPDATE_CHECK_ENABLED,
+            &mut fetch,
+            env!("G13_VERSION"),
+            manual,
+        );
         *status.lock().unwrap() = next;
         ctx.request_repaint();
     });
@@ -1207,15 +1214,27 @@ impl MonitorApp {
                  timing (delay/rate) is set in config.toml under [autorepeat].");
         ui.add_space(6.0);
 
+        let action_rows = {
+            let set = self.profiles.read().unwrap();
+            set.active_profile().map(|p| p.action_rows()).unwrap_or_default()
+        };
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             for &key in ROWS.iter().flat_map(|row| row.iter()) {
-                render_binding_row(ui, key, &mut self.edits, &mut self.repeat_edits, &mut self.label_edits, &valid_keys);
+                if let Some(summary) = action_rows.get(&key) {
+                    render_action_row(ui, &format!("{key:?}"), summary);
+                } else {
+                    render_binding_row(ui, key, &mut self.edits, &mut self.repeat_edits, &mut self.label_edits, &valid_keys);
+                }
             }
             ui.add_space(6.0);
             ui.separator();
             ui.label("Thumb buttons");
             for &key in THUMB.iter() {
-                render_binding_row(ui, key, &mut self.edits, &mut self.repeat_edits, &mut self.label_edits, &valid_keys);
+                if let Some(summary) = action_rows.get(&key) {
+                    render_action_row(ui, &format!("{key:?}"), summary);
+                } else {
+                    render_binding_row(ui, key, &mut self.edits, &mut self.repeat_edits, &mut self.label_edits, &valid_keys);
+                }
             }
             ui.add_space(6.0);
             ui.separator();
@@ -1509,8 +1528,12 @@ impl MonitorApp {
             }
             crate::update::UpdateStatus::Idle => {}
         }
-        if ui.button("Check for updates").clicked() {
-            spawn_update_check(self.update_status.clone(), ui.ctx().clone(), true);
+        if crate::update::UPDATE_CHECK_ENABLED {
+            if ui.button("Check for updates").clicked() {
+                spawn_update_check(self.update_status.clone(), ui.ctx().clone(), true);
+            }
+        } else {
+            ui.label("Update checks are off in this build. Get new builds from the fork's Releases page.");
         }
         ui.add_space(6.0);
         ui.weak("Close or minimize hides to the tray; the driver keeps running. Quit from the tray to exit.");

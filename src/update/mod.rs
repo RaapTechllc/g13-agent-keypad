@@ -79,7 +79,44 @@ pub fn fetch_latest_json() -> anyhow::Result<String> {
     Ok(body)
 }
 
+/// This fork does not check for updates. The checker trusts a `.sha256` shipped
+/// in the same release, which does not prove who built it.
+pub const UPDATE_CHECK_ENABLED: bool = false;
+
+/// Map a fetch to the Settings status. When `enabled` is false, `fetch` is not called.
+pub fn next_status(
+    enabled: bool,
+    fetch: &mut dyn FnMut() -> anyhow::Result<String>,
+    current: &str,
+    manual: bool,
+) -> UpdateStatus {
+    if !enabled {
+        return UpdateStatus::Idle;
+    }
+    match fetch() {
+        Ok(json) => match parse_release(&json) {
+            Ok(release) => match select_update(&release, current) {
+                Some(update) => UpdateStatus::Available(update),
+                None => UpdateStatus::UpToDate,
+            },
+            Err(e) => status_from_error(&e, manual),
+        },
+        Err(e) => status_from_error(&e, manual),
+    }
+}
+
+fn status_from_error(err: &anyhow::Error, manual: bool) -> UpdateStatus {
+    log::warn!("update check failed: {err:#}");
+    if manual {
+        UpdateStatus::Failed("couldn't check for updates".into())
+    } else {
+        UpdateStatus::Idle
+    }
+}
+
 /// Check GitHub for an update newer than this build. `Ok(None)` = up to date.
+/// Kept for the enabled path; this fork does not call it (`UPDATE_CHECK_ENABLED` is false).
+#[allow(dead_code)]
 pub fn check() -> anyhow::Result<Option<AvailableUpdate>> {
     let json = fetch_latest_json()?;
     let release = parse_release(&json)?;

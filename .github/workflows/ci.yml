@@ -66,3 +66,18 @@ jobs:
       - name: Build (release)
         shell: bash
         run: cargo build --release
+
+      - name: Dry-run smoke (no hardware)
+        shell: bash
+        run: |
+          set -o pipefail
+          ./target/release/g13-driver.exe --check-config --config config.toml | tee check.txt
+          ./target/release/g13-driver.exe --simulate "M1,G1,G2,G3,G4,BTN1,BTN2,M2,G1" --config config.toml | tee sim.txt
+          grep -qx '\[check\] ok: 3 profiles, 0 errors' check.txt
+          grep -q '^\[dry-run\] M1 -> profile "V1 build"$' sim.txt
+          grep -q '^\[dry-run\] G1 -> paste_text file=prompts/v1-build/01-spec-pr.md method=clipboard restore_clipboard=true chars=[0-9]\+$' sim.txt
+          grep -q '^\[dry-run\] G2 -> paste_text file=prompts/v1-build/02-grill-me.md ' sim.txt
+          grep -q '^\[dry-run\] BTN2 -> launch_or_focus process=Cursor.exe ' sim.txt
+          grep -q '^\[dry-run\] G1 -> paste_text file=prompts/workflow-2/01-step.md ' sim.txt
+          grep -q '^\[dry-run\] done: 9 events, 0 errors$' sim.txt
+          ! grep -qi 'paste your' sim.txt

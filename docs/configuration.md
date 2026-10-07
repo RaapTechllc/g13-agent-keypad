@@ -88,6 +88,48 @@ on a binding (GUI) or add it to `[repeat]` to make it repeat while held, like a 
 Timing is global in `[autorepeat]` (`delay_ms`, `interval_ms`). Joystick directions and modifier-only
 bindings never repeat.
 
+## Action bindings
+
+A `[keys]` value is either a shortcut string (unchanged) or a table. Tables use the
+planned form `[keys.G1]` with a `type` field. This repository is public: keep real
+prompt text in your installed copy, not in git. The shipped files start with
+`REPLACE_ME` so you can see which ones to replace.
+
+```toml
+[keys.G1]
+type = "paste_text"
+file = "prompts/v1-build/01-spec-pr.md"   # relative to the folder that holds config.toml
+method = "clipboard"                       # or "type"
+restore_clipboard = true
+
+[keys.BTN2]
+type = "launch_or_focus"
+exe = '%LOCALAPPDATA%\Programs\cursor\Cursor.exe'
+args = []
+window_title = "Cursor"                    # optional substring
+process_name = "Cursor.exe"                # optional; default is the exe file name
+```
+
+`paste_text` reads that file when the key goes down and pastes it into the focused
+window. `file` must stay inside the config folder (no `..`, no drive, no symlink).
+`method` is `clipboard` (default) or `type`. Clipboard mode saves the clipboard and
+puts it back after the paste. `type` sends the characters with a Shift+Enter for each
+line break.
+
+`launch_or_focus` brings a matching window forward, or starts the `.exe` if none is
+open. `exe` may use only `%LOCALAPPDATA%`, `%APPDATA%`, `%USERPROFILE%`,
+`%ProgramFiles%`, and `%ProgramFiles(x86)%`, and the path after expansion must end in
+`.exe`. `args` are literal strings. The program is not checked when the profile loads.
+
+An action key fires once on key-down. It does not repeat, and key-up does nothing.
+If a key is both a shortcut and an action, the action is the one that runs.
+
+Paste never presses Enter by itself, so a chat input never auto-submits. Pasting
+multi-line text into a terminal runs each line, because the terminal does. That
+"never auto-submits" behavior holds only for chat inputs.
+
+The Bindings tab shows an action as a read-only summary. Save keeps the action.
+
 ## Worked example
 
 `profiles/game.toml` — WASD on the stick, jump on a thumb button, an auto-repeating attack:

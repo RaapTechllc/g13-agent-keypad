@@ -1,11 +1,42 @@
 # g13-driver
 
-[![CI](https://github.com/cavefish-dev/g13-driver/actions/workflows/ci.yml/badge.svg)](https://github.com/cavefish-dev/g13-driver/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/cavefish-dev/g13-driver)](https://github.com/cavefish-dev/g13-driver/releases/latest)
+[![CI](https://github.com/RaapTechllc/g13-agent-keypad/actions/workflows/ci.yml/badge.svg)](https://github.com/RaapTechllc/g13-agent-keypad/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/RaapTechllc/g13-agent-keypad)](https://github.com/RaapTechllc/g13-agent-keypad/releases/latest)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
 An open-source replacement driver for the **Logitech G13** gaming keypad on Windows. Logitech's
 official software is abandonware; this brings the G13 back to life with a small, modern app.
+
+## Fork notice and attribution
+
+This repository is a fork of [cavefish-dev/g13-driver](https://github.com/cavefish-dev/g13-driver),
+licensed under GPL-3.0-or-later. Modifications are by RaapTech LLC (see [NOTICE](NOTICE) and
+[LICENSE](LICENSE)). The in-app update check is off in this build. New builds come from this
+fork's Releases page.
+
+This repo is public. The files under `prompts/` are placeholders. Keep real prompt text in
+your installed copy, not in git.
+
+## Agent workflow keys
+
+M1 loads **V1 build**: G1–G4 paste `prompts/v1-build/` (spec, grill-me, verify, ship).
+M2 and M3 load **Workflow 2** and **Workflow 3** (G1–G3 paste `prompts/workflow-2/` and
+`prompts/workflow-3/`). On every profile, BTN1 is Grok Bot and BTN2 is Cursor.
+
+BTN1 ships as `%LOCALAPPDATA%\Programs\REPLACE_ME\REPLACE_ME.exe` because that path is not
+verified. For a browser app, set `exe` to the browser and put the URL in `args`. BTN2 uses
+the per-user Cursor install; a system install is `%ProgramFiles%\cursor\Cursor.exe`.
+
+Before plugging in the keypad:
+
+```text
+g13-driver.exe --check-config
+g13-driver.exe --simulate "M1,G1,G2,G3,G4,BTN1,BTN2,M2,G1"
+```
+
+`--check-config` and `--simulate` do not open USB or inject keys. Paste goes to the focused
+window and does not press Enter, so a chat box does not submit. See
+[docs/configuration.md](docs/configuration.md) and [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ## What it does
 
@@ -26,9 +57,9 @@ official software is abandonware; this brings the G13 back to life with a small,
 
 ### 1. Download
 
-Grab the latest `g13-driver-vX.Y.Z-windows-x64.zip` from the
-[**Releases**](https://github.com/cavefish-dev/g13-driver/releases/latest) page and **extract the
-whole folder**. Keep `g13-driver.exe`, `config.toml`, and the `profiles/` folder together.
+Grab the latest `g13-driver-vX.Y.Z-windows-x64.zip` from this fork's
+[**Releases**](https://github.com/RaapTechllc/g13-agent-keypad/releases/latest) page and **extract the
+whole folder**. Keep `g13-driver.exe`, `config.toml`, `profiles/`, and `prompts/` together.
 
 ### 2. One-time driver setup (Zadig)
 
@@ -79,8 +110,9 @@ Power users can hand-edit the TOML config files next to the exe — see
 
 ## Updating
 
-For now, download the newer release zip and replace your files (keep your edited `config.toml` /
-`profiles/` if you customized them). Built-in auto-update is on the roadmap.
+Update checks are off in this build. Download a newer zip from this fork's
+[Releases](https://github.com/RaapTechllc/g13-agent-keypad/releases/latest) page and replace your
+files (keep your edited `config.toml`, `profiles/`, and `prompts/`).
 
 ## Troubleshooting
 
@@ -111,7 +143,7 @@ Roughly where things are headed (direction, not promises):
 
 - **Done:** key/thumb/stick remapping, joystick→WASD, M-key profiles, GUI monitor + bindings editor,
   hold-means-hold + media keys, auto-repeat, tray background app, CI + GitHub releases.
-- **Next:** in-app auto-update from GitHub Releases.
+- **Next:** more agent-workflow profiles. In-app auto-update stays off in this fork.
 - **Later:** macros + shell commands, the G13 LCD (160×43), RGB backlight, Linux support, and a
   standalone GUI configurator.
 

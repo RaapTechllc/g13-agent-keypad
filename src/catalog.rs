@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use crate::config::{Profile, ProfileSource};
 
-const REPO: &str = "cavefish-dev/g13-driver";
+const REPO: &str = "RaapTechllc/g13-agent-keypad";
 const BRANCH: &str = "main";
 
 /// One entry in the catalog index.
@@ -53,8 +53,12 @@ pub fn stamp_download(profile: &mut Profile, origin: &str) {
 pub fn parse_profile(body: &str, filename: &str) -> Result<Profile> {
     let raw = toml::from_str(body)
         .with_context(|| format!("catalog profile {filename} is not valid TOML"))?;
-    Profile::from_raw(raw)
-        .with_context(|| format!("catalog profile {filename} is not a valid profile"))
+    let profile = Profile::from_raw(raw)
+        .with_context(|| format!("catalog profile {filename} is not a valid profile"))?;
+    if profile.has_actions() {
+        anyhow::bail!("catalog profile {filename} is local-only");
+    }
+    Ok(profile)
 }
 
 fn user_agent() -> String {
@@ -129,9 +133,9 @@ mod tests {
     #[test]
     fn urls_are_raw_github() {
         assert_eq!(index_url(),
-            "https://raw.githubusercontent.com/cavefish-dev/g13-driver/main/catalog/index.json");
+            "https://raw.githubusercontent.com/RaapTechllc/g13-agent-keypad/main/catalog/index.json");
         assert_eq!(profile_url("gaming.toml"),
-            "https://raw.githubusercontent.com/cavefish-dev/g13-driver/main/catalog/gaming.toml");
+            "https://raw.githubusercontent.com/RaapTechllc/g13-agent-keypad/main/catalog/gaming.toml");
     }
 
     #[test]
