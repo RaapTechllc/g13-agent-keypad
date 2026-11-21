@@ -114,6 +114,7 @@ jobs:
             g13-driver-v*-*.zip.sha256
             g13-driver-v*-setup.exe
             g13-driver-v*-setup.exe.sha256
+          retention-days: 3
 
   publish:
     needs: [prepare, build]
